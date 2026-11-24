@@ -56,6 +56,10 @@ footer{padding:8px 6px 10px;display:flex;flex-direction:column;gap:7px}
 .bg{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
 .bg button{min-height:50px;font-size:12.5px;font-weight:600;padding:0 2px;border-width:3px}
 .done{width:100%;margin-top:14px;background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700}
+#b-spin{position:absolute;right:10px;top:10px;z-index:3;width:54px;height:54px;min-height:0;padding:0;border-radius:50%;font-size:26px;line-height:1;background:rgba(255,255,255,.92);box-shadow:0 2px 8px rgba(0,0,0,.18)}
+#b-spin.on{background:#fff3c4;border-color:var(--ink)}
+#b-spin.on span{display:inline-block;animation:spinicon 2s linear infinite}
+@keyframes spinicon{to{transform:rotate(360deg)}}
 #toast{position:absolute;left:50%;top:118px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 14px;border-radius:999px;font-size:14px;z-index:9;pointer-events:none;opacity:0;transition:opacity .2s}
 #toast.show{opacity:1}
 @media (max-width:360px){h1{font-size:17px}.bar button{font-size:13px}}
@@ -68,7 +72,7 @@ footer{padding:8px 6px 10px;display:flex;flex-direction:column;gap:7px}
  #more{left:auto;width:360px;right:0;top:0;bottom:0;border-radius:22px 0 0 22px;max-height:none}
  #toast{top:20px}
 }
-@media (prefers-reduced-motion:reduce){button:active{transform:none}#toast{transition:none}}
+@media (prefers-reduced-motion:reduce){button:active{transform:none}#toast{transition:none}#b-spin.on span{animation:none}}
 </style>
 </head>
 <body>
@@ -86,6 +90,7 @@ footer{padding:8px 6px 10px;display:flex;flex-direction:column;gap:7px}
 
  <div id="stage">
   <canvas id="cv" role="img" aria-label="Rityta. Rita med fingret, så låter det."></canvas>
+  <button id="b-spin" aria-label="Snurra kalejdoskopet" aria-pressed="false"><span aria-hidden="true">↻</span></button>
   <div id="hint"><div><b>Rita här!</b>Färgen väljer instrument.<br>Högt upp låter högt, lågt ner låter lågt.</div></div>
  </div>
 
@@ -111,6 +116,16 @@ footer{padding:8px 6px 10px;display:flex;flex-direction:column;gap:7px}
   <h2>Spegla ritningen</h2>
   <div class="grp" id="g-sym" role="group" aria-label="Symmetri">
    <button data-v="0" class="on">Av</button><button data-v="1">Spegel</button><button data-v="2">Kalejdoskop</button>
+  </div>
+  <h2>Snurra kalejdoskopet</h2>
+  <div class="grp">
+   <button id="b-spin2" aria-pressed="false">▶ Snurra</button>
+  </div>
+  <div class="grp" id="g-speed" role="group" aria-label="Fart" style="margin-top:6px">
+   <button data-v="0">Långsamt</button><button data-v="1" class="on">Mellan</button><button data-v="2">Snabbt</button>
+  </div>
+  <div class="grp" id="g-dir" role="group" aria-label="Riktning" style="margin-top:6px">
+   <button data-v="1" class="on">↻ Medsols</button><button data-v="-1">↺ Motsols</button>
   </div>
   <h2>Bakgrund</h2>
   <div class="bg" id="g-bg" role="group" aria-label="Bakgrund"></div>
@@ -153,8 +168,10 @@ const SCALES=[{d:[0,2,4,7,9]},{d:[0,2,4,5,7,9,11]},{d:[0,2,3,5,7,8,10]}];
 const KEY='albas-ritstudio-v2';
 let color=4,mode='draw',shape='line',size=1,stampIx=0,muted=false,sym=0,scaleIx=0,bgIx=0;
 let strokes=[],redo=[],cur=null,replaying=false,W=0,H=0,dpr=1,dirty=true,baseValid=false;
+let spinOn=false,spinSpeed=1,spinDir=1,theta=0,eraseCut=false;const SPEEDS=[15,40,100];
 const cv=$('#cv'),ctx=cv.getContext('2d');
 const baseCv=document.createElement('canvas'),bctx=baseCv.getContext('2d');
+const kCv=document.createElement('canvas'),kctx=kCv.getContext('2d');
 
 /* ===== Ljud ===== */
 let AC=null,master=null;
@@ -196,8 +213,8 @@ function bgColor(){return BGS[bgIx].c}
 function resize(){
  const r=$('#stage').getBoundingClientRect();
  dpr=Math.min(window.devicePixelRatio||1,3);W=Math.max(1,r.width);H=Math.max(1,r.height);
- for(const c of [cv,baseCv]){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
- ctx.setTransform(dpr,0,0,dpr,0,0);bctx.setTransform(dpr,0,0,dpr,0,0);baseValid=false;dirty=true;
+ for(const c of [cv,baseCv,kCv]){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
+ ctx.setTransform(dpr,0,0,dpr,0,0);bctx.setTransform(dpr,0,0,dpr,0,0);kctx.setTransform(dpr,0,0,dpr,0,0);baseValid=false;dirty=true;
 }
 const rnd=(i,s)=>{const x=Math.sin(i*12.9898+s*78.233)*43758.5453;return x-Math.floor(x)};
 function shapePath(id,r){
@@ -225,7 +242,7 @@ function strokeOnce(c,s,tl){
   c.fillText(s.emoji,pts[pts.length-1].x,pts[pts.length-1].y);c.restore();return;
  }
  if(s.shape==='line'||s.shape==='eraser'){
-  const col=s.shape==='eraser'?bgColor():COLORS[s.color].c,w=s.shape==='eraser'?s.size*2.4:s.size;
+  const col=s.shape==='eraser'?(eraseCut?'#000':bgColor()):COLORS[s.color].c,w=s.shape==='eraser'?s.size*2.4:s.size;
   c.save();c.strokeStyle=col;c.fillStyle=col;c.lineWidth=w;c.lineCap='round';c.lineJoin='round';
   if(pts.length===1){c.beginPath();c.arc(pts[0].x,pts[0].y,w/2,0,Math.PI*2);c.fill()}
   else{c.beginPath();c.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length-1;i++){const mx=(pts[i].x+pts[i+1].x)/2,my=(pts[i].y+pts[i+1].y)/2;c.quadraticCurveTo(pts[i].x,pts[i].y,mx,my)}const l=pts[pts.length-1];c.lineTo(l.x,l.y);c.stroke()}
@@ -255,7 +272,20 @@ function paintStroke(c,s,tl){
  }
 }
 function fillBg(c){c.fillStyle=bgColor();c.fillRect(0,0,W,H)}
-function rebuildBase(){bctx.setTransform(dpr,0,0,dpr,0,0);fillBg(bctx);strokes.forEach(s=>paintStroke(bctx,s,Infinity));baseValid=true}
+function applyStroke(s){
+ const a=s.a0||0,er=s.shape==='eraser';
+ if(er)paintStroke(bctx,s,Infinity);
+ if(er||s.sym===2){
+  kctx.save();kctx.translate(W/2,H/2);kctx.rotate(-a);kctx.translate(-W/2,-H/2);
+  if(er){kctx.globalCompositeOperation='destination-out';eraseCut=true}
+  paintStroke(kctx,s,Infinity);eraseCut=false;kctx.restore();
+ }else paintStroke(bctx,s,Infinity);
+}
+function rebuildBase(){
+ bctx.setTransform(dpr,0,0,dpr,0,0);kctx.setTransform(dpr,0,0,dpr,0,0);
+ fillBg(bctx);kctx.save();kctx.setTransform(1,0,0,1,0,0);kctx.clearRect(0,0,kCv.width,kCv.height);kctx.restore();
+ strokes.forEach(applyStroke);baseValid=true;
+}
 let rp=null;
 function render(){
  ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -271,10 +301,17 @@ function render(){
  }else{
   if(!baseValid)rebuildBase();
   ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(baseCv,0,0);ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.save();ctx.translate(W/2,H/2);ctx.rotate(theta);ctx.translate(-W/2,-H/2);ctx.imageSmoothingQuality='high';ctx.drawImage(kCv,0,0,W,H);ctx.restore();
   if(cur)paintStroke(ctx,cur,Infinity);
  }
 }
-function loop(){if(dirty||replaying){render();dirty=false}requestAnimationFrame(loop)}
+let lastFrame=0;
+function loop(ts){
+ const dt=lastFrame?Math.min(.1,(ts-lastFrame)/1000):0;lastFrame=ts||0;
+ if(spinOn&&!replaying){theta=(theta+SPEEDS[spinSpeed]*Math.PI/180*spinDir*dt)%(Math.PI*2);dirty=true}
+ if(dirty||replaying){render();dirty=false}
+ requestAnimationFrame(loop);
+}
 
 /* ===== Pekare ===== */
 let lastNoteT=0,acc=0,t0s=0,noteN=0;
@@ -308,7 +345,7 @@ function endStroke(){
  if(!cur)return;
  if(cur.kind==='stamp'){cur.notes=[[0,semiOfY(cur.pts[0][1]),cur.color]]}
  strokes.push(cur);redo=[];
- if(baseValid)paintStroke(bctx,cur,Infinity);
+ cur.a0=theta;if(baseValid)applyStroke(cur);
  cur=null;dirty=true;changed();
 }
 cv.addEventListener('pointerup',endStroke);
@@ -336,7 +373,7 @@ let saveT=null;
 const r4=n=>Math.round(n*1e4)/1e4;
 function persist(){
  try{
-  const data={v:2,bg:bgIx,sym,scale:scaleIx,strokes:strokes.map(s=>({k:s.kind,c:s.color,sh:s.shape,e:s.emoji,z:s.size,sd:s.seed,sy:s.sym,p:s.pts.map(p=>[r4(p[0]),r4(p[1]),p[2]]),n:s.notes}))};
+  const data={v:2,bg:bgIx,sym,scale:scaleIx,th:r4(theta),spd:spinSpeed,dir:spinDir,strokes:strokes.map(s=>({a:r4(s.a0||0),k:s.kind,c:s.color,sh:s.shape,e:s.emoji,z:s.size,sd:s.seed,sy:s.sym,p:s.pts.map(p=>[r4(p[0]),r4(p[1]),p[2]]),n:s.notes}))};
   localStorage.setItem(KEY,JSON.stringify(data));
  }catch(_){}
 }
@@ -344,8 +381,8 @@ function restore(){
  try{
   const raw=localStorage.getItem(KEY);if(!raw)return;
   const d=JSON.parse(raw);if(!d||d.v!==2)return;
-  bgIx=d.bg||0;sym=d.sym||0;scaleIx=d.scale||0;
-  strokes=(d.strokes||[]).map(s=>({kind:s.k,color:s.c,shape:s.sh,emoji:s.e,size:s.z,seed:s.sd,sym:s.sy,pts:s.p,notes:s.n||[]}));
+  bgIx=d.bg||0;sym=d.sym||0;scaleIx=d.scale||0;theta=d.th||0;spinSpeed=d.spd==null?1:d.spd;spinDir=d.dir||1;
+  strokes=(d.strokes||[]).map(s=>({a0:s.a||0,kind:s.k,color:s.c,shape:s.sh,emoji:s.e,size:s.z,seed:s.sd,sym:s.sy,pts:s.p,notes:s.n||[]}));
   if(strokes.length)$('#hint').classList.add('gone');
  }catch(_){strokes=[]}
 }
@@ -419,6 +456,19 @@ function buildBg(){
 }
 $('#g-bg').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(!b)return;bgIx=+b.dataset.v;baseValid=false;dirty=true;buildBg();applyStageBg();persistSoon()});
 function applyStageBg(){$('#stage').style.background=bgColor();$('#stage').classList.toggle('dark',!!BGS[bgIx].dark)}
+function hasKaleido(){return strokes.some(s=>s.sym===2&&s.shape!=='eraser')}
+function setSpin(on){
+ spinOn=on;
+ const b=$('#b-spin');b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));
+ const b2=$('#b-spin2');b2.textContent=on?'■ Stoppa snurran':'▶ Snurra';b2.setAttribute('aria-pressed',String(on));b2.classList.toggle('on',on);
+ if(on&&!hasKaleido())toast('Välj Kalejdoskop under Mer och rita, så snurrar det');
+ if(!on)persistSoon();dirty=true;
+}
+$('#b-spin').addEventListener('click',()=>setSpin(!spinOn));
+$('#b-spin2').addEventListener('click',()=>setSpin(!spinOn));
+$('#g-speed').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(!b)return;spinSpeed=+b.dataset.v;setOn('#g-speed',spinSpeed);persistSoon()});
+$('#g-dir').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(!b)return;spinDir=+b.dataset.v;setOn('#g-dir',spinDir);persistSoon()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)persist()});
 function persistSoon(){clearTimeout(saveT);saveT=setTimeout(persist,300)}
 $('#b-sound').addEventListener('click',()=>{
  muted=!muted;const b=$('#b-sound');b.textContent=muted?'🔇 Ljud av':'🔊 Ljud på';b.setAttribute('aria-pressed',String(!muted));
@@ -442,7 +492,7 @@ $('#b-share').addEventListener('click',async()=>{
 window.addEventListener('resize',resize);
 window.addEventListener('orientationchange',()=>setTimeout(resize,200));
 document.addEventListener('gesturestart',e=>e.preventDefault());
-restore();buildColors();buildShapes();buildBg();setOn('#g-sym',sym);setOn('#g-scale',scaleIx);applyStageBg();updateBtns();resize();loop();
+restore();buildColors();buildShapes();buildBg();setOn('#g-sym',sym);setOn('#g-scale',scaleIx);setOn('#g-speed',spinSpeed);setOn('#g-dir',spinDir);applyStageBg();updateBtns();resize();requestAnimationFrame(loop);
 </script>
 </body>
 </html>

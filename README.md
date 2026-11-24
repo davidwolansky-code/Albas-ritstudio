@@ -20,6 +20,7 @@ En ritapp för mobilen där teckningen låter medan man ritar.
 ## Mer (knappen "⋯ Mer")
 
 - **Spegla ritningen:** Av, Spegel (vänster och höger) eller Kalejdoskop (sex delar runt mitten).
+- **Snurra kalejdoskopet:** tryck på ↻-knappen uppe till höger på ritytan, eller välj Snurra här. Kalejdoskopet roterar runt mitten, och du kan välja fart (Långsamt, Mellan, Snabbt) och riktning (medsols eller motsols). Det går att rita medan det snurrar: nya streck stannar där fingret ritade och snurrar sedan med.
 - **Bakgrund:** Papper, Natt, Himmel, Gräs eller Sol.
 - **Skala:** Mjuk (femtonig, går aldrig fel), Glad (dur) eller Mystisk (moll).
 - **Ljud på och av.**
@@ -28,7 +29,8 @@ En ritapp för mobilen där teckningen låter medan man ritar.
 ## Annat
 
 - **Ångra** och **Gör om**. **Rensa** kräver två tryck.
-- **Spela upp** ritar om teckningen steg för steg, med samma ljud, spegling och bakgrund.
+- **Spela upp** ritar om teckningen steg för steg, med samma ljud, spegling och bakgrund. Under uppspelningen står kalejdoskopet stilla.
+- Kalejdoskopstreck ligger alltid överst när teckningen snurrar. Sudd tar bort även dem.
 - Teckningen **sparas automatiskt** i webbläsaren och finns kvar nästa gång.
 - Fungerar i stående och liggande läge.
 
