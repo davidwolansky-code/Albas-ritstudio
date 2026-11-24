@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Albas ritstudio</title>
+<style>
+:root{--paper:#fffdf8;--ink:#23211d;--soft:#6b675e;--line:#e3ded2;--panel:#f4f0e6;--accent:#2f6fe0}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--panel);color:var(--ink);font:16px/1.4 "Segoe UI","Helvetica Neue",Arial,system-ui,sans-serif;overscroll-behavior:none}
+body{overflow:hidden;-webkit-user-select:none;user-select:none}
+#app{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:900px;margin:0 auto;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{padding:8px 10px 6px;display:flex;flex-direction:column;gap:6px}
+h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.2px}
+.bar{display:flex;gap:6px}
+button{font:inherit;color:var(--ink);background:#fff;border:2px solid var(--line);border-radius:12px;min-height:46px;padding:0 10px;cursor:pointer;touch-action:manipulation}
+button:active{transform:scale(.97)}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.bar button{flex:1;font-size:14.5px;font-weight:600;padding:0 4px}
+button.on{border-color:var(--ink);background:#fff3c4}
+#stage{position:relative;flex:1;min-height:120px;margin:0 8px;border-radius:16px;overflow:hidden;border:2px solid var(--line);background:var(--paper)}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+#hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--soft);font-size:18px;pointer-events:none}
+#hint b{display:block;font-size:24px;color:var(--ink);margin-bottom:6px}
+#hint.gone{display:none}
+#scale{position:absolute;left:8px;top:8px;bottom:8px;width:22px;display:flex;flex-direction:column;justify-content:space-between;align-items:center;font-size:11px;color:var(--soft);pointer-events:none;opacity:.8}
+footer{padding:8px 6px 10px;display:flex;flex-direction:column;gap:7px}
+.colors{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px}
+.sw{min-height:0;padding:0;border:3px solid transparent;border-radius:50%;aspect-ratio:1;width:100%;max-width:56px;justify-self:center;box-shadow:inset 0 0 0 2px rgba(0,0,0,.12)}
+.sw.on{border-color:var(--ink);box-shadow:inset 0 0 0 3px #fff}
+#inst{font-size:14px;color:var(--soft);text-align:center;min-height:20px}
+#inst b{color:var(--ink)}
+.row{display:flex;gap:6px;align-items:stretch}
+.row button{flex:1}
+.seg{display:flex;gap:6px;flex:1.4}
+.seg button{flex:1;font-weight:700;font-size:15px}
+.sizes{display:flex;gap:6px;flex:1.6}
+.sizes button{flex:1;display:flex;align-items:center;justify-content:center}
+.sizes i{display:block;background:var(--ink);border-radius:50%}
+.shapes{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.shapes.stamps{grid-template-columns:repeat(8,1fr);gap:4px}
+.shapes button{font-size:22px;padding:0;min-height:48px;line-height:1}
+.shapes.stamps button{font-size:24px}
+@media (max-width:360px){h1{font-size:17px}.bar button{font-size:13px}}
+@media (prefers-reduced-motion:reduce){button:active{transform:none}}
+.sr{position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+<div id="app">
+ <header>
+  <h1>Albas ritstudio</h1>
+  <div class="bar">
+   <button id="b-undo" aria-label="Ångra senaste">↶ Ångra</button>
+   <button id="b-clear" aria-label="Rensa allt">Rensa</button>
+   <button id="b-play" aria-label="Spela upp teckningen">▶ Spela</button>
+   <button id="b-sound" aria-label="Ljud" aria-pressed="true">🔊 Ljud</button>
+  </div>
+ </header>
+
+ <div id="stage">
+  <canvas id="cv" role="img" aria-label="Rityta. Rita med fingret, så låter det."></canvas>
+  <div id="scale" aria-hidden="true"><span>▲ högt</span><span>▼ lågt</span></div>
+  <div id="hint"><div><b>Rita här!</b>Färgen väljer instrument.<br>Högt upp låter högt, lågt ner låter lågt.</div></div>
+ </div>
+
+ <footer>
+  <div class="colors" id="colors" role="group" aria-label="Färg och instrument"></div>
+  <div id="inst" aria-live="polite"></div>
+  <div class="row">
+   <div class="seg" role="group" aria-label="Verktyg">
+    <button id="m-draw" class="on" aria-pressed="true">Rita</button>
+    <button id="m-stamp" aria-pressed="false">Stämpla</button>
+   </div>
+   <div class="sizes" role="group" aria-label="Storlek">
+    <button data-sz="0" aria-label="Liten"><i style="width:8px;height:8px"></i></button>
+    <button data-sz="1" aria-label="Mellan" class="on"><i style="width:16px;height:16px"></i></button>
+    <button data-sz="2" aria-label="Stor"><i style="width:26px;height:26px"></i></button>
+   </div>
+  </div>
+  <div class="shapes" id="shapes" role="group" aria-label="Form"></div>
+ </footer>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const COLORS=[
+ {c:'#e63946',n:'Röd',inst:'Piano'},
+ {c:'#f4811f',n:'Orange',inst:'Xylofon'},
+ {c:'#f2c200',n:'Gul',inst:'Klockspel'},
+ {c:'#2a9d4b',n:'Grön',inst:'Flöjt'},
+ {c:'#2f6fe0',n:'Blå',inst:'Harpa'},
+ {c:'#8a4fd8',n:'Lila',inst:'Orgel'},
+ {c:'#e84a9c',n:'Rosa',inst:'Bubbla'},
+ {c:'#2b2b2b',n:'Svart',inst:'Bas'}
+];
+const SHAPES=[{id:'line',l:'〰',n:'Linje'},{id:'star',l:'★',n:'Stjärnor'},{id:'heart',l:'♥',n:'Hjärtan'},{id:'circle',l:'●',n:'Prickar'},{id:'flower',l:'✿',n:'Blommor'}];
+const STAMPS=['🐱','🐶','🦋','🐟','🌈','🌸','🦄','⭐'];
+const SIZES={line:[4,9,18],shape:[9,16,28],stamp:[38,60,90]};
+let color=4,mode='draw',shape='line',size=1,stampIx=0,muted=false;
+let strokes=[],cur=null,replaying=false,W=0,H=0,dpr=1,dirty=true;
+const cv=$('#cv'),ctx=cv.getContext('2d');
+
+/* ===== Ljud ===== */
+let AC=null,master=null;
+function audio(){
+ if(!AC){
+  const A=window.AudioContext||window.webkitAudioContext;if(!A)return null;
+  AC=new A();const comp=AC.createDynamicsCompressor();master=AC.createGain();master.gain.value=.55;
+  master.connect(comp);comp.connect(AC.destination);
+ }
+ if(AC.state==='suspended')AC.resume();
+ return AC;
+}
+const SCALE=[0,2,4,7,9];const NN=15;
+function freqOf(idx,inst){
+ const oct=Math.floor(idx/5),deg=SCALE[idx%5];
+ let f=261.63*Math.pow(2,(12*oct+deg)/12);
+ if(inst===7)f/=4;
+ return f;
+}
+function env(g,t,a,d,peak){g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+a);g.gain.exponentialRampToValueAtTime(0.0001,t+a+d)}
+function playNote(inst,idx){
+ if(muted)return;const ac=audio();if(!ac)return;
+ const t=ac.currentTime,f=freqOf(idx,inst);
+ const g=ac.createGain();g.connect(master);
+ const osc=(type,fr,dest)=>{const o=ac.createOscillator();o.type=type;o.frequency.value=fr;o.connect(dest||g);return o};
+ const stop=(arr,d)=>arr.forEach(o=>{o.start(t);o.stop(t+d)});
+ if(inst===0){env(g,t,.005,.7,.5);const o1=osc('triangle',f),o2=osc('sine',f*2);const g2=ac.createGain();g2.gain.value=.25;o2.disconnect();o2.connect(g2);g2.connect(g);stop([o1,o2],.8)}
+ else if(inst===1){env(g,t,.003,.35,.6);const o1=osc('sine',f),o2=osc('sine',f*3.9);const g2=ac.createGain();g2.gain.value=.2;o2.disconnect();o2.connect(g2);g2.connect(g);stop([o1,o2],.45)}
+ else if(inst===2){env(g,t,.002,.9,.4);const o1=osc('sine',f*2),o2=osc('sine',f*2*2.76);const g2=ac.createGain();g2.gain.value=.25;o2.disconnect();o2.connect(g2);g2.connect(g);stop([o1,o2],1)}
+ else if(inst===3){env(g,t,.05,.4,.45);const o=osc('sine',f);const l=ac.createOscillator(),lg=ac.createGain();l.frequency.value=5.5;lg.gain.value=f*.012;l.connect(lg);lg.connect(o.frequency);l.start(t);l.stop(t+.5);stop([o],.5)}
+ else if(inst===4){env(g,t,.004,1,.5);const fl=ac.createBiquadFilter();fl.type='lowpass';fl.frequency.value=2400;g.disconnect();g.connect(fl);fl.connect(master);const o=osc('triangle',f);stop([o],1.1)}
+ else if(inst===5){env(g,t,.03,.35,.28);const fl=ac.createBiquadFilter();fl.type='lowpass';fl.frequency.value=1300;g.disconnect();g.connect(fl);fl.connect(master);const o1=osc('sawtooth',f),o2=osc('sawtooth',f*1.004);stop([o1,o2],.45)}
+ else if(inst===6){env(g,t,.01,.3,.5);const o=osc('sine',f*.8);o.frequency.setValueAtTime(f*.8,t);o.frequency.exponentialRampToValueAtTime(f,t+.12);stop([o],.4)}
+ else{env(g,t,.005,.5,.6);const fl=ac.createBiquadFilter();fl.type='lowpass';fl.frequency.value=500;g.disconnect();g.connect(fl);fl.connect(master);const o=osc('sawtooth',f);stop([o],.6)}
+}
+const idxOfY=ny=>Math.max(0,Math.min(NN-1,Math.round((1-ny)*(NN-1))));
+
+/* ===== Ritning ===== */
+function resize(){
+ const r=$('#stage').getBoundingClientRect();
+ dpr=Math.min(window.devicePixelRatio||1,3);W=Math.max(1,r.width);H=Math.max(1,r.height);
+ cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+ ctx.setTransform(dpr,0,0,dpr,0,0);dirty=true;
+}
+const rnd=(i,s)=>{const x=Math.sin(i*12.9898+s*78.233)*43758.5453;return x-Math.floor(x)};
+function shapePath(id,r){
+ const p=new Path2D();
+ if(id==='star'){for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*.45:r;const x=Math.cos(a)*rr,y=Math.sin(a)*rr;i?p.lineTo(x,y):p.moveTo(x,y)}p.closePath()}
+ else if(id==='heart'){const s=r/16;p.moveTo(0,6*s);p.bezierCurveTo(-18*s,-6*s,-9*s,-18*s,0,-8*s);p.bezierCurveTo(9*s,-18*s,18*s,-6*s,0,6*s+0);p.closePath()}
+ else if(id==='circle'){p.arc(0,0,r*.85,0,Math.PI*2)}
+ else if(id==='flower'){for(let i=0;i<5;i++){const a=i*Math.PI*2/5;p.moveTo(Math.cos(a)*r*.55+r*.38,Math.sin(a)*r*.55);p.arc(Math.cos(a)*r*.55,Math.sin(a)*r*.55,r*.38,0,Math.PI*2)}}
+ return p;
+}
+function drawShapeAt(s,x,y,i){
+ const col=COLORS[s.color].c,r=s.size;
+ ctx.save();ctx.translate(x,y);ctx.rotate((rnd(i,s.seed)-.5)*.9);
+ ctx.fillStyle=col;ctx.fill(shapePath(s.shape,r));
+ if(s.shape==='flower'){ctx.beginPath();ctx.arc(0,0,r*.28,0,Math.PI*2);ctx.fillStyle='#fff3c4';ctx.fill()}
+ ctx.restore();
+}
+function drawStroke(s,tl){
+ const pts=[];for(const p of s.pts){if(p.t<=tl)pts.push({x:p.x*W,y:p.y*H});else break}
+ if(!pts.length)return;
+ if(s.kind==='stamp'){
+  ctx.save();ctx.font=s.size+'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(s.emoji,pts[pts.length-1].x,pts[pts.length-1].y);ctx.restore();return;
+ }
+ if(s.shape==='line'){
+  ctx.save();ctx.strokeStyle=COLORS[s.color].c;ctx.fillStyle=COLORS[s.color].c;ctx.lineWidth=s.size;ctx.lineCap='round';ctx.lineJoin='round';
+  if(pts.length===1){ctx.beginPath();ctx.arc(pts[0].x,pts[0].y,s.size/2,0,Math.PI*2);ctx.fill()}
+  else{ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length-1;i++){const mx=(pts[i].x+pts[i+1].x)/2,my=(pts[i].y+pts[i+1].y)/2;ctx.quadraticCurveTo(pts[i].x,pts[i].y,mx,my)}const l=pts[pts.length-1];ctx.lineTo(l.x,l.y);ctx.stroke()}
+  ctx.restore();return;
+ }
+ const sp=Math.max(10,s.size*1.7);let carry=0,k=0;
+ drawShapeAt(s,pts[0].x,pts[0].y,k++);
+ for(let i=1;i<pts.length;i++){
+  let ax=pts[i-1].x,ay=pts[i-1].y;const bx=pts[i].x,by=pts[i].y;let d=Math.hypot(bx-ax,by-ay);
+  while(carry+d>=sp){const u=(sp-carry)/d;ax+=(bx-ax)*u;ay+=(by-ay)*u;drawShapeAt(s,ax,ay,k++);d=Math.hypot(bx-ax,by-ay);carry=0}
+  carry+=d;
+ }
+}
+function render(){
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+ ctx.fillStyle='#fffdf8';ctx.fillRect(0,0,W,H);
+ if(replaying&&rp){
+  const el=performance.now()-rp.t0;
+  strokes.forEach(s=>{
+   if(el<s.rs.start)return;
+   const tl=(el-s.rs.start)/s.rs.f;drawStroke(s,tl);
+   while(s.ri<s.notes.length&&s.rs.start+s.notes[s.ri].t*s.rs.f<=el){playNote(s.color,s.notes[s.ri].idx);s.ri++}
+  });
+  if(el>rp.total+300)stopReplay();
+ }else{
+  strokes.forEach(s=>drawStroke(s,Infinity));
+  if(cur)drawStroke(cur,Infinity);
+ }
+}
+function loop(){if(dirty||replaying){render();dirty=false}requestAnimationFrame(loop)}
+
+/* ===== Pekare ===== */
+let lastNoteT=0,acc=0,t0s=0;
+function pos(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}}
+function hideHint(){$('#hint').classList.add('gone')}
+cv.addEventListener('pointerdown',e=>{
+ if(replaying)return;e.preventDefault();
+ try{cv.setPointerCapture(e.pointerId)}catch(_){}
+ audio();hideHint();
+ const p=pos(e);t0s=performance.now();
+ const kind=mode==='stamp'?'stamp':'draw';
+ const szSet=kind==='stamp'?SIZES.stamp:(shape==='line'?SIZES.line:SIZES.shape);
+ cur={kind,color,shape:kind==='draw'?shape:'',emoji:STAMPS[stampIx],size:szSet[size],seed:Math.random()*100,pts:[{x:p.x,y:p.y,t:0}],notes:[],ri:0};
+ const idx=idxOfY(p.y);cur.notes.push({t:0,idx});playNote(color,idx);
+ lastNoteT=t0s;acc=0;dirty=true;
+});
+cv.addEventListener('pointermove',e=>{
+ if(!cur)return;e.preventDefault();
+ const p=pos(e),now=performance.now(),last=cur.pts[cur.pts.length-1];
+ if(cur.kind==='stamp'){last.x=p.x;last.y=p.y;dirty=true;return}
+ const dx=(p.x-last.x)*W,dy=(p.y-last.y)*H,d=Math.hypot(dx,dy);
+ if(d<2)return;
+ cur.pts.push({x:p.x,y:p.y,t:Math.round(now-t0s)});acc+=d;
+ if(acc>=26&&now-lastNoteT>=80){acc=0;lastNoteT=now;const idx=idxOfY(p.y);cur.notes.push({t:Math.round(now-t0s),idx});playNote(cur.color,idx)}
+ dirty=true;
+});
+function endStroke(e){
+ if(!cur)return;
+ if(cur.kind==='stamp'){const l=cur.pts[0];cur.notes=[{t:0,idx:idxOfY(l.y)}]}
+ strokes.push(cur);cur=null;dirty=true;updateBtns();
+}
+cv.addEventListener('pointerup',endStroke);
+cv.addEventListener('pointercancel',endStroke);
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+/* ===== Uppspelning ===== */
+let rp=null;
+function startReplay(){
+ if(!strokes.length)return;
+ let t=0;
+ strokes.forEach(s=>{
+  const last=s.pts[s.pts.length-1].t,dur=Math.max(300,last);
+  const f=Math.min(1,2500/dur);
+  s.rs={start:t,f};s.ri=0;
+  t+=dur*f+350;
+ });
+ replaying=true;rp={t0:performance.now(),total:t};audio();
+ $('#b-play').textContent='■ Stopp';$('#b-play').setAttribute('aria-label','Stoppa uppspelningen');$('#b-play').classList.add('on');updateBtns();
+}
+function stopReplay(){
+ replaying=false;rp=null;dirty=true;
+ $('#b-play').textContent='▶ Spela';$('#b-play').setAttribute('aria-label','Spela upp teckningen');$('#b-play').classList.remove('on');updateBtns();
+}
+
+/* ===== Knappar ===== */
+function updateBtns(){
+ const has=strokes.length>0;
+ $('#b-undo').disabled=!has||replaying;$('#b-clear').disabled=!has||replaying;$('#b-play').disabled=!has&&!replaying;
+ [$('#b-undo'),$('#b-clear'),$('#b-play')].forEach(b=>b.style.opacity=b.disabled?.45:1);
+}
+$('#b-undo').addEventListener('click',()=>{strokes.pop();dirty=true;updateBtns()});
+let clearTimer=null;
+$('#b-clear').addEventListener('click',()=>{
+ const b=$('#b-clear');
+ if(b.dataset.arm){clearTimeout(clearTimer);delete b.dataset.arm;b.textContent='Rensa';strokes=[];dirty=true;updateBtns();$('#hint').classList.remove('gone');return}
+ b.dataset.arm='1';b.textContent='Säker?';
+ clearTimer=setTimeout(()=>{delete b.dataset.arm;b.textContent='Rensa'},2500);
+});
+$('#b-play').addEventListener('click',()=>replaying?stopReplay():startReplay());
+$('#b-sound').addEventListener('click',()=>{
+ muted=!muted;const b=$('#b-sound');b.textContent=muted?'🔇 Ljud':'🔊 Ljud';b.setAttribute('aria-pressed',String(!muted));
+});
+function buildColors(){
+ $('#colors').innerHTML=COLORS.map((c,i)=>'<button class="sw'+(i===color?' on':'')+'" data-c="'+i+'" style="background:'+c.c+'" aria-label="'+c.n+', instrument '+c.inst+'" aria-pressed="'+(i===color)+'"></button>').join('');
+ $('#inst').innerHTML='Instrument: <b>'+COLORS[color].inst+'</b>';
+}
+function buildShapes(){
+ const el=$('#shapes');
+ if(mode==='draw'){
+  el.className='shapes';
+  el.innerHTML=SHAPES.map(s=>'<button data-s="'+s.id+'" class="'+(s.id===shape?'on':'')+'" aria-label="'+s.n+'" aria-pressed="'+(s.id===shape)+'" style="'+(s.id==='line'?'':'color:'+COLORS[color].c)+'">'+s.l+'</button>').join('');
+ }else{
+  el.className='shapes stamps';
+  el.innerHTML=STAMPS.map((s,i)=>'<button data-st="'+i+'" class="'+(i===stampIx?'on':'')+'" aria-label="Stämpel '+(i+1)+'" aria-pressed="'+(i===stampIx)+'">'+s+'</button>').join('');
+ }
+}
+$('#colors').addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(!b)return;color=+b.dataset.c;buildColors();buildShapes();audio();playNote(color,idxOfY(.5))});
+$('#shapes').addEventListener('click',e=>{
+ const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.s){shape=b.dataset.s}else if(b.dataset.st){stampIx=+b.dataset.st}
+ buildShapes();
+});
+function setMode(m){
+ mode=m;$('#m-draw').classList.toggle('on',m==='draw');$('#m-stamp').classList.toggle('on',m==='stamp');
+ $('#m-draw').setAttribute('aria-pressed',String(m==='draw'));$('#m-stamp').setAttribute('aria-pressed',String(m==='stamp'));buildShapes();
+}
+$('#m-draw').addEventListener('click',()=>setMode('draw'));
+$('#m-stamp').addEventListener('click',()=>setMode('stamp'));
+document.querySelectorAll('.sizes button').forEach(b=>b.addEventListener('click',()=>{
+ size=+b.dataset.sz;document.querySelectorAll('.sizes button').forEach(x=>x.classList.toggle('on',x===b));
+}));
+window.addEventListener('resize',resize);
+window.addEventListener('orientationchange',()=>setTimeout(resize,200));
+document.addEventListener('gesturestart',e=>e.preventDefault());
+buildColors();buildShapes();updateBtns();resize();loop();
+</script>
+</body>
+</html>
